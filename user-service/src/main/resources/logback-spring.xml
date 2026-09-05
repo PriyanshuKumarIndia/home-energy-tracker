@@ -6,7 +6,7 @@
          Properties
          ========================================================= -->
 
-    <property name="LOG_DIR" value="${LOG_DIR:-user-service/logs}"/>
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
     <property name="APP_NAME" value="${spring.application.name:-user-service}"/>
 
     <!-- =========================================================
