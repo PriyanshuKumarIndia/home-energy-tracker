@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Aspect
 @Slf4j
 public class LoggingAspect {
-    @Pointcut("execution(* com.teamengineoil.user_service.service.*.*(..)")
+    @Pointcut("execution(* com.teamengineoil.user_service.service.*.*(..))")
     public void servicePointcut() {
     }
 
