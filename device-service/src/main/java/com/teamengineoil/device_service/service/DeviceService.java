@@ -12,11 +12,12 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class DeviceService {
+    public static final String DEVICE_NOT_FOUND = "Device Not Found";
     private final DeviceRepository deviceRepository;
     private final DeviceMapper deviceMapper;
 
     public DeviceDto getDeviceById(Long id) {
-        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException("Device Not Found"));
+        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException(DEVICE_NOT_FOUND));
         return deviceMapper.toDto(device);
     }
 
@@ -26,13 +27,13 @@ public class DeviceService {
     }
 
     public void updateDevice(Long id, UpdateRequest dto) {
-        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException("Device Not Found"));
+        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException(DEVICE_NOT_FOUND));
         deviceMapper.updateDeviceEntity(dto, device);
         deviceRepository.save(device);
     }
 
     public void deleteDevice(Long id) {
-        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException("Device Not Found"));
+        Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException(DEVICE_NOT_FOUND));
         deviceRepository.delete(device);
     }
 }
