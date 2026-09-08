@@ -34,7 +34,7 @@ public class ParallelDataSimulator implements CommandLineRunner {
     @Value("${spring.security.user.password}")
     private String password;
 
-    @Value(("${simulation.requests-per-interval}"))
+    @Value("${simulation.requests-per-interval}")
     private int requestsPerInterval;
 
     @Value("${ingestion.endpoint}")
