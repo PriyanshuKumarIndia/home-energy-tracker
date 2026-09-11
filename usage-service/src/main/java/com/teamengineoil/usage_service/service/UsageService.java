@@ -135,7 +135,8 @@ public class UsageService {
                 final AlertingEvent alertingEvent = AlertingEvent.builder()
                         .userId(userId)
                         .message("Energy consumption threshold exceeded")
-                        .threshold(totalConsumptions)
+                        .energyConsumed(totalConsumptions)
+                        .threshold(threshold)
                         .email(userEmailMap.get(userId))
                         .build();
 
