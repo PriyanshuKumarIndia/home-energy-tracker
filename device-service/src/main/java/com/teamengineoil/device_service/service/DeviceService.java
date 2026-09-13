@@ -9,6 +9,8 @@ import com.teamengineoil.device_service.repository.DeviceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class DeviceService {
@@ -35,5 +37,12 @@ public class DeviceService {
     public void deleteDevice(Long id) {
         Device device = deviceRepository.findById(id).orElseThrow(() -> new HomeEnergyTrackerException(DEVICE_NOT_FOUND));
         deviceRepository.delete(device);
+    }
+
+    public List<DeviceDto> getAllDevicesForUserId(Long userId) {
+        List<Device> deviceList = deviceRepository.findAllByUserId(userId);
+        return deviceList.stream()
+                .map(deviceMapper::toDto)
+                .toList();
     }
 }

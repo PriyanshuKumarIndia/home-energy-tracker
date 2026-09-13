@@ -60,7 +60,7 @@ public class ParallelDataSimulator implements CommandLineRunner {
             executorService.submit(() -> {
                 for (int i = 0; i < requestsForThread; i++) {
                     EnergyUsageDto energyUsageDto = EnergyUsageDto.builder()
-                            .deviceId(random.nextLong(1, 6))
+                            .deviceId(random.nextLong(1, 199))
                             .energyConsumed((double) Math.round(random.nextDouble(0.0, 10.0) * 100) / 100)
                             .timestamp(Instant.now())
                             .build();

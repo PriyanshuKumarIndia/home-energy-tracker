@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/devices")
 @RequiredArgsConstructor
@@ -36,5 +38,11 @@ public class DeviceController {
     public ResponseEntity<String> deleteDevice(@PathVariable Long id) {
         deviceService.deleteDevice(id);
         return ResponseEntity.ok("Device deleted successfully");
+    }
+
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<DeviceDto>> getDeviceByUserId(@PathVariable Long userId) {
+        List<DeviceDto> devices = deviceService.getAllDevicesForUserId(userId);
+        return ResponseEntity.ok(devices);
     }
 }
