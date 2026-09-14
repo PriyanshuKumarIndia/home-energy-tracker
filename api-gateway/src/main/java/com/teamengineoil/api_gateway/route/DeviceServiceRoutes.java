@@ -42,7 +42,7 @@ public class DeviceServiceRoutes {
         return GatewayRouterFunctions.route("device-service-api-docs")
                 .route(RequestPredicates.path("/docs/device-service/v3/api-docs"),
                         http())
-                .before(uri("http://localhost:8080/api/v1"))
+                .before(uri("http://localhost:8081/api/v1"))
                 .filter(setPath("/v3/api-docs"))
                 .build();
     }

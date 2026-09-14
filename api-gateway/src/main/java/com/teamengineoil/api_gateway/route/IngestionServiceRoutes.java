@@ -39,10 +39,10 @@ public class IngestionServiceRoutes {
 
     @Bean
     public RouterFunction<ServerResponse> ingestionServiceApiDocs() {
-        return GatewayRouterFunctions.route("device-service-api-docs")
-                .route(RequestPredicates.path("/docs/device-service/v3/api-docs"),
+        return GatewayRouterFunctions.route("ingestion-service-api-docs")
+                .route(RequestPredicates.path("/docs/ingestion-service/v3/api-docs"),
                         http())
-                .before(uri("http://localhost:8080/api/v1"))
+                .before(uri("http://localhost:8082/api/v1"))
                 .filter(setPath("/v3/api-docs"))
                 .build();
     }
