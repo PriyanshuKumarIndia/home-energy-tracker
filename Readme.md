@@ -1,566 +1,379 @@
 # Home Energy Tracker
 
-A production-oriented microservices-based application for monitoring, managing, and analyzing household energy consumption.
+A microservices-based Spring Boot application that monitors household energy consumption across smart home devices, triggers threshold-based email alerts, and delivers AI-powered energy-saving insights via a locally-running LLM.
 
-The goal of Home Energy Tracker is to provide users with a centralized platform to track electricity usage, manage household appliances, monitor energy consumption, and derive useful insights from their energy data.
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Services](#services)
+- [Technology Stack](#technology-stack)
+- [Data Flow](#data-flow)
+- [Database Schema](#database-schema)
+- [API Reference](#api-reference)
+- [Configuration](#configuration)
+- [Getting Started](#getting-started)
+- [Running the Services](#running-the-services)
+- [Built-in Data Simulation](#built-in-data-simulation)
+- [Project Structure](#project-structure)
+
+---
+
+## Overview
+
+Home Energy Tracker solves the problem of unmonitored household energy usage. It ingests real-time energy readings from smart home devices, stores time-series data in InfluxDB, aggregates consumption per user, fires email alerts when a user-defined threshold is exceeded, and uses an Ollama-hosted LLM to generate personalised energy-saving tips and usage overviews.
 
 ---
 
 ## Architecture
 
-Home Energy Tracker follows a **microservices architecture**, where individual business capabilities are separated into independently deployable services.
+The system is composed of seven independent Spring Boot 4 services communicating over HTTP (synchronous) and Apache Kafka (asynchronous).
 
-```text
-                         ┌───────────────────┐
-                         │   React Frontend  │
-                         └─────────┬─────────┘
-                                   │
-                                   ▼
-                         ┌───────────────────┐
-                         │    API Gateway    │
-                         └─────────┬─────────┘
-                                   │
-                 ┌─────────────────┼─────────────────┐
-                 │                 │                 │
-                 ▼                 ▼                 ▼
-        ┌────────────────┐ ┌────────────────┐ ┌────────────────┐
-        │ User Service   │ │ Energy Service │ │ Appliance      │
-        │                │ │                │ │ Service        │
-        └───────┬────────┘ └───────┬────────┘ └───────┬────────┘
-                │                  │                  │
-                ▼                  ▼                  ▼
-        ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-        │ User Database │  │ Energy DB     │  │ Appliance DB  │
-        └───────────────┘  └───────────────┘  └───────────────┘
-
-                         ┌───────────────────┐
-                         │ Notification      │
-                         │ Service           │
-                         └───────────────────┘
-
-                         ┌───────────────────┐
-                         │ Service Discovery │
-                         │ / Configuration   │
-                         └───────────────────┘
-
-                         ┌───────────────────┐
-                         │ Kafka / Messaging │
-                         └───────────────────┘
 ```
-
-> The architecture diagram above is a high-level representation. The actual services and infrastructure components are documented below.
+Client / Browser
+       │
+       ▼
+  ┌──────────┐
+  │ API      │  :9000  Spring Cloud Gateway (MVC) + Resilience4j circuit breakers
+  │ Gateway  │
+  └────┬─────┘
+       │ routes to downstream services
+  ┌────┴──────────────────────────────────────────────────┐
+  │                                                       │
+  ▼                   ▼                   ▼               ▼
+User Service     Device Service    Ingestion Service   Insight Service
+  :8080             :8081               :8082             :8085
+  MySQL             MySQL               │                 │
+  Flyway                                │ Kafka           │ HTTP
+                                        ▼                 ▼
+                                   Usage Service      Ollama (LLM)
+                                      :8083
+                                      InfluxDB
+                                      │ Kafka
+                                      ▼
+                                  Alert Service
+                                     :8084
+                                     MySQL
+                                     Mailpit (SMTP)
+```
 
 ---
 
-## Microservices
+## Services
 
-| Service                        | Responsibility                                            |
-| ------------------------------ | --------------------------------------------------------- |
-| **API Gateway**                | Single entry point for client requests and routing        |
-| **User Service**               | User registration, authentication, and user management    |
-| **Energy Service**             | Energy consumption tracking and energy-related operations |
-| **Appliance Service**          | Household appliance management and appliance energy usage |
-| **Notification Service**       | Notifications and energy-related alerts                   |
-| **Config / Discovery Service** | Centralized configuration and service discovery           |
-
-Each microservice owns its business logic and data and can be developed and deployed independently.
+| Service | Port | Responsibility |
+|---|---|---|
+| `api-gateway` | 9000 | Single entry point; routes all `/api/v1/**` traffic with per-service circuit breakers |
+| `user-service` | 8080 | CRUD for users; stores alerting preferences and energy thresholds |
+| `device-service` | 8081 | CRUD for smart home devices; associates devices to users |
+| `ingestion-service` | 8082 | Accepts energy readings via REST and publishes them to Kafka topic `energy-usage` |
+| `usage-service` | 8083 | Consumes `energy-usage` events, writes to InfluxDB, aggregates hourly per user, publishes `energy-usage-alerting` events when thresholds are exceeded |
+| `alert-service` | 8084 | Consumes `energy-usage-alerting` events and sends threshold-breach emails via SMTP |
+| `insight-service` | 8085 | Fetches usage data from `usage-service` and calls Ollama (deepseek-coder model) to generate energy-saving tips and usage overviews |
 
 ---
 
 ## Technology Stack
 
-### Backend
-
-* Java 21
-* Spring Boot 3.x
-* Spring Web
-* Spring Data JPA
-* Spring Security
-* Bean Validation
-* Maven
-* Lombok
-
-### Microservices & Infrastructure
-
-* Spring Cloud
-* API Gateway
-* Service Discovery
-* Centralized Configuration
-* Apache Kafka
-* Docker
-* Docker Compose
-
-### Database
-
-* PostgreSQL / MySQL
-* Database-per-service architecture
-
-### Observability
-
-* SLF4J
-* Logback
-* Spring Boot Actuator
-* Prometheus
-* Grafana
-
-### Frontend
-
-* React
-* JavaScript / TypeScript
-* REST APIs
+| Layer | Technology |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 4.1.1 |
+| API Gateway | Spring Cloud Gateway (MVC) 2025.1.3 |
+| Resilience | Resilience4j circuit breakers |
+| Persistence (relational) | Spring Data JPA + Hibernate + MySQL 8.3 |
+| Schema migrations | Flyway (user-service manages shared schema) |
+| Time-series storage | InfluxDB 2.7 (influxdb-client-java 6.12.0) |
+| Messaging | Apache Kafka (KRaft mode, no ZooKeeper) |
+| AI / LLM | Spring AI 2.0.1 + Ollama (`deepseek-coder` model) |
+| Email | Spring Mail + Mailpit (local SMTP dev server) |
+| Security | Spring Security (HTTP Basic on all services) |
+| Object mapping | ModelMapper 3.2.4 |
+| AOP | Spring AOP / AspectJ (logging + execution timing) |
+| Observability | Spring Actuator, Logback (rolling file + error file appenders) |
+| Containerisation | Docker Compose |
+| Build | Maven (per-service `mvnw` wrappers) |
+| Lombok | Yes (all services) |
 
 ---
 
-## Project Structure
+## Data Flow
 
-```text
-home-energy-tracker/
-│
-├── README.md
-├── .gitignore
-├── .env.example
-├── docker-compose.yml
-│
-├── services/
-│   │
-│   ├── api-gateway/
-│   ├── user-service/
-│   ├── energy-service/
-│   ├── appliance-service/
-│   └── notification-service/
-│
-├── config/
-│
-├── infrastructure/
-│   ├── prometheus/
-│   ├── grafana/
-│   └── docker/
-│
-├── docs/
-│   ├── architecture/
-│   ├── api/
-│   └── decisions/
-│
-└── scripts/
+### Ingestion → Storage
+
+1. A client (or the built-in simulator) `POST /api/v1/ingestion` with `{ deviceId, energyConsumed, timestamp }`.
+2. `ingestion-service` publishes an `EnergyUsageEvent` to Kafka topic **`energy-usage`**.
+3. `usage-service` consumes the event and writes a time-series point to InfluxDB (`energy-usage` measurement, tagged by `deviceId`).
+
+### Threshold Alerting
+
+4. Every 10 seconds `usage-service` runs a scheduled job that:
+   - Queries InfluxDB for the last hour of consumption, grouped and summed by `deviceId`.
+   - Calls `device-service` to resolve each `deviceId` → `userId`.
+   - Calls `user-service` to fetch each user's alerting flag and threshold.
+   - For users whose total consumption exceeds their threshold, publishes an `AlertingEvent` to Kafka topic **`energy-usage-alerting`**.
+5. `alert-service` consumes the event and sends an email via SMTP (Mailpit in development).
+
+### AI Insights
+
+6. A client calls `GET /api/v1/insight/saving-tips/{userId}` or `GET /api/v1/insight/overview/{userId}`.
+7. `insight-service` fetches the last 3 days of usage from `usage-service`, builds a prompt, and calls the locally-running Ollama `deepseek-coder` model via Spring AI.
+8. The LLM response is returned to the caller as an `InsightDto`.
+
+---
+
+## Database Schema
+
+Managed by Flyway migrations in `user-service/src/main/resources/db/migration/`.
+
+**`users`**
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGINT PK | Auto-increment |
+| `firstname` | VARCHAR(100) | Required |
+| `lastname` | VARCHAR(100) | |
+| `email` | VARCHAR(255) | Unique |
+| `address` | TEXT | |
+| `alerting` | TINYINT(1) | 0 = disabled |
+| `energy_alerting_threshold` | DOUBLE | kWh threshold for alerts |
+
+**`devices`**
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGINT PK | Auto-increment |
+| `name` | VARCHAR(255) | |
+| `type` | VARCHAR(50) | Enum: `SPEAKER`, `CAMERA`, `THERMOSTAT`, `LIGHT`, `LOCK`, `DOORBELL` |
+| `location` | VARCHAR(255) | |
+| `user_id` | BIGINT FK | → `users.id` ON DELETE CASCADE |
+
+**`alerts`**
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGINT PK | Auto-increment |
+| `user_id` | BIGINT | |
+| `sent` | TINYINT(1) | |
+| `created_at` | TIMESTAMP | Default: current timestamp |
+
+InfluxDB stores energy readings in the **`usage-bucket`** bucket under the `energy-usage` measurement with a `deviceId` tag and `energyConsumed` field.
+
+---
+
+## API Reference
+
+All services are accessed through the API Gateway at `http://localhost:9000`. Each service also exposes its own port directly.
+
+### User Service — `/api/v1/users`
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/users` | Create a user |
+| `GET` | `/users/{id}` | Get user by ID |
+| `PUT` | `/users/{id}` | Update user |
+| `DELETE` | `/users/{id}` | Delete user |
+
+### Device Service — `/api/v1/devices`
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/devices` | Register a device |
+| `GET` | `/devices/{id}` | Get device by ID |
+| `PUT` | `/devices/{id}` | Update device |
+| `DELETE` | `/devices/{id}` | Delete device |
+| `GET` | `/devices/user/{userId}` | List all devices for a user |
+
+### Ingestion Service — `/api/v1/ingestion`
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/ingestion` | Submit an energy reading |
+
+Request body:
+```json
+{
+  "deviceId": 1,
+  "energyConsumed": 2.45,
+  "timestamp": "2025-01-01T12:00:00Z"
+}
 ```
 
-> Update the structure above if the actual repository layout differs.
+### Usage Service — `/api/v1/usage`
 
----
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/usage/{userId}?days=3` | Get aggregated device energy usage for a user over N days (default: 3) |
 
-## Key Features
+### Insight Service — `/api/v1/insight`
 
-### User Management
-
-* User registration
-* User authentication
-* Secure password handling
-* JWT-based authentication
-* Authorization
-* User-specific data access
-
-### Energy Tracking
-
-* Record energy consumption
-* Track historical consumption
-* Retrieve energy usage data
-* Analyze consumption patterns
-* Energy usage summaries
-
-### Appliance Management
-
-* Add household appliances
-* Update appliance information
-* Remove appliances
-* Track appliance energy consumption
-* Associate appliances with users
-
-### Notifications
-
-* Energy consumption alerts
-* Threshold-based notifications
-* Event-driven notifications
-
-### Microservices Communication
-
-Services communicate using appropriate synchronous and asynchronous communication mechanisms.
-
-* REST APIs for synchronous operations
-* Apache Kafka for event-driven communication
-
----
-
-## Security
-
-The application uses Spring Security to protect secured endpoints.
-
-Authentication is handled using JWT-based authentication.
-
-Sensitive configuration such as:
-
-* Database passwords
-* JWT secrets
-* API keys
-* Kafka credentials
-* Third-party credentials
-
-must not be committed to the repository.
-
-Sensitive environment-specific values should be provided through environment variables.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/insight/saving-tips/{userId}` | AI-generated energy-saving tips based on last 3 days of usage |
+| `GET` | `/insight/overview/{userId}` | AI-generated usage overview and comparison to average households |
 
 ---
 
 ## Configuration
 
-The repository provides an `.env.example` file containing the configuration variables required to run the application.
+All services use HTTP Basic authentication. Default credentials (for development) are configured in each service's `application.yml`:
 
-Create your local environment file:
-
-```bash
-cp .env.example .env
+```
+username: user
+password: <configured in application.yml — do not use in production>
 ```
 
-Then configure the required values.
+Key configuration properties per service:
 
-> Never commit `.env` or any file containing real credentials.
+**`usage-service`**
+```yaml
+influx:
+  url: http://localhost:8072
+  token: <influxdb-token>
+  org: teamengineoil
+  bucket: usage-bucket
+
+device.service.url: http://localhost:8081/api/v1/devices
+user.service.url:   http://localhost:8080/api/v1/users
+```
+
+**`ingestion-service`**
+```yaml
+simulation:
+  requests-per-interval: 100
+  interval-ms: 10000
+  parallel-threads: 10
+```
+
+**`insight-service`**
+```yaml
+spring.ai.ollama.chat.model: deepseek-coder
+usage.service.url: http://localhost:8083/api/v1/usage
+```
+
+**`alert-service`**
+```yaml
+spring.mail.host: localhost
+spring.mail.port: 1025   # Mailpit
+```
+
+**`api-gateway` — Resilience4j circuit breaker defaults**
+```yaml
+slidingWindowSize: 8
+failureRateThreshold: 20        # %
+waitDurationInOpenState: 5s
+permittedNumberOfCallsInHalfOpenState: 2
+```
 
 ---
 
-## Running the Application
+## Getting Started
 
 ### Prerequisites
 
-Make sure the following are installed:
+| Tool | Version |
+|---|---|
+| Java | 21+ |
+| Maven | 3.9+ (or use included `mvnw`) |
+| Docker & Docker Compose | Latest |
+| Ollama | Latest — with `deepseek-coder` model pulled |
 
-* Java 21
-* Maven
-* Docker
-* Docker Compose
-* Git
-* Node.js and npm (if running the frontend locally)
-
-Verify the installations:
-
-```bash
-java -version
-mvn -version
-docker --version
-docker compose version
-```
-
----
-
-## Running with Docker Compose
-
-From the project root:
+### 1. Start infrastructure
 
 ```bash
 docker compose up -d
 ```
 
-Check running containers:
+This starts:
+- **MySQL** on port `3308` (mapped from 3306 inside container)
+- **Kafka** (KRaft) on ports `9092` (internal) / `9094` (host)
+- **Kafka UI** on port `8070` → http://localhost:8070
+- **InfluxDB** on port `8072` → http://localhost:8072
+- **Mailpit** on port `8025` (UI) / `1025` (SMTP) → http://localhost:8025
+
+### 2. Pull the Ollama model
 
 ```bash
-docker compose ps
+ollama pull deepseek-coder
 ```
 
-View logs:
+### 3. Build and run each service
+
+From each service directory (or use your IDE):
 
 ```bash
-docker compose logs -f
+cd user-service && ./mvnw spring-boot:run
+cd device-service && ./mvnw spring-boot:run
+cd ingestion-service && ./mvnw spring-boot:run
+cd usage-service && ./mvnw spring-boot:run
+cd alert-service && ./mvnw spring-boot:run
+cd insight-service && ./mvnw spring-boot:run
+cd api-gateway && ./mvnw spring-boot:run
 ```
 
-Stop the application:
-
-```bash
-docker compose down
-```
-
-To stop the application and remove associated volumes:
-
-```bash
-docker compose down -v
-```
-
-> Use `docker compose down -v` carefully because it removes Docker volumes and can delete local database data.
+> **Note:** `user-service` must start before `device-service` and `alert-service` because Flyway runs the shared schema migrations (`users`, `devices`, `alerts` tables) on startup.
 
 ---
 
-## Running Individual Services
+## Running the Services
 
-Each microservice can also be run independently during development.
+### Service startup order
 
-Navigate to the required service:
+1. `user-service` (runs Flyway migrations)
+2. `device-service`, `alert-service` (depend on schema)
+3. `ingestion-service`, `usage-service`
+4. `insight-service`
+5. `api-gateway`
 
-```bash
-cd services/<service-name>
-```
-
-Run using Maven:
-
-```bash
-./mvnw spring-boot:run
-```
-
-On Windows:
+### Verify health
 
 ```bash
-mvnw.cmd spring-boot:run
+curl http://localhost:9000/actuator/health
 ```
 
 ---
 
-## API Documentation
+## Built-in Data Simulation
 
-API documentation is provided using OpenAPI / Swagger.
+`ingestion-service` ships with two simulators for development and load testing. They are disabled by default (the `@Scheduled` annotation on `ContinuousDataSimulator` is commented out; `ParallelDataSimulator` runs on a fixed schedule).
 
-Once the application is running, the Swagger UI can be accessed through the configured API Gateway or individual services.
+**`ParallelDataSimulator`** — active by default:
+- Fires every `simulation.interval-ms` (default: 10 000 ms).
+- Sends `simulation.requests-per-interval` (default: 100) requests split across `simulation.parallel-threads` (default: 10) threads.
+- Generates random `deviceId` (1–199) and `energyConsumed` (0.00–10.00 kWh) values.
 
-```text
-/swagger-ui/index.html
-```
-
-The exact URL depends on the service and gateway configuration.
-
----
-
-## Testing
-
-Run the complete test suite using:
-
-```bash
-mvn test
-```
-
-For an individual service:
-
-```bash
-cd services/<service-name>
-mvn test
-```
-
-The project follows a layered testing strategy including:
-
-* Unit tests
-* Service-layer tests
-* Controller tests
-* Repository tests
-* Integration tests
+To disable simulation, remove or comment out the `@Scheduled` annotation on `ParallelDataSimulator.sendMockData()`.
 
 ---
 
-## Observability
+## Project Structure
 
-The application is designed with production observability in mind.
-
-### Logging
-
-Application logging uses SLF4J with Logback.
-
-Logs should provide useful contextual information without exposing sensitive information such as:
-
-* Passwords
-* JWT tokens
-* API keys
-* Database credentials
-* Personally sensitive information
-
-### Health Checks
-
-Spring Boot Actuator provides application health and operational endpoints.
-
-Example:
-
-```text
-/actuator/health
+```
+home-energy-tracker/
+├── api-gateway/            # Spring Cloud Gateway — routing + circuit breakers
+├── user-service/           # User management + Flyway migrations
+├── device-service/         # Device registry
+├── ingestion-service/      # Energy reading ingestion + Kafka producer + simulators
+├── usage-service/          # Kafka consumer + InfluxDB writer + alerting scheduler
+├── alert-service/          # Kafka consumer + email notifications
+├── insight-service/        # AI insights via Spring AI + Ollama
+├── docker/
+│   ├── mysql/init.sql      # Database initialisation
+│   └── keycloak/           # Keycloak realm config (infrastructure placeholder)
+├── docker-compose.yml      # Full infrastructure stack
+└── Readme.md
 ```
 
-### Metrics
+Each service follows the same internal package layout:
 
-Prometheus-compatible metrics can be exposed through Spring Boot Actuator.
-
-Grafana can then be used to visualize application and infrastructure metrics.
-
----
-
-## Event-Driven Architecture
-
-Apache Kafka is used for asynchronous communication between services where appropriate.
-
-Example event flow:
-
-```text
-Energy Service
-      │
-      │ EnergyConsumptionRecorded
-      ▼
-   Kafka Topic
-      │
-      ├───────────────► Notification Service
-      │
-      └───────────────► Analytics / Future Services
 ```
-
-This allows additional consumers to be introduced without tightly coupling them to the producer service.
-
----
-
-## Database Architecture
-
-The project follows the **database-per-service** principle.
-
-```text
-User Service
-     │
-     ▼
- User Database
-
-Energy Service
-     │
-     ▼
-Energy Database
-
-Appliance Service
-     │
-     ▼
-Appliance Database
+com.teamengineoil.<service>/
+├── config/         # Spring Security, beans
+├── controller/     # REST controllers
+├── service/        # Business logic
+├── repository/     # Spring Data JPA repositories (where applicable)
+├── entity/         # JPA entities (where applicable)
+├── dto/            # Request/response DTOs
+├── mapper/         # ModelMapper wrappers (where applicable)
+├── exception/      # Custom exceptions + global handler (where applicable)
+└── aspect/         # AOP logging + execution timing (user-service)
 ```
-
-A service should not directly access another service's database.
-
-Cross-service data access should happen through APIs or asynchronous events.
-
----
-
-## Development Principles
-
-The project follows some software engineering principles:
-
-* Separation of concerns
-* Single responsibility
-* Database per service
-* Loose coupling
-* High cohesion
-* API-first development
-* Centralized configuration
-* Service discovery
-* Stateless authentication
-* Event-driven communication where appropriate
-* Centralized exception handling
-* Input validation
-* Structured logging
-* Automated testing
-* Containerized deployment
-
----
-
-## Git Workflow
-
-Feature development should use feature branches.
-
-Example:
-
-```bash
-git checkout -b feature/energy-consumption
-```
-
-Commit changes using descriptive commit messages:
-
-```text
-feat: add energy consumption service
-feat: implement JWT authentication
-fix: handle invalid energy readings
-refactor: improve global exception handling
-test: add energy service unit tests
-docs: update architecture documentation
-chore: configure docker compose
-```
-
----
-
-## Roadmap
-
-### Phase 1 — Core Services
-
-* [x] Project setup
-* [ ] User Service
-* [ ] Energy Service
-* [ ] Appliance Service
-* [ ] Notification Service
-* [ ] API Gateway
-
-### Phase 2 — Security
-
-* [ ] User authentication
-* [ ] JWT authentication
-* [ ] Authorization
-* [ ] Secure service communication
-
-### Phase 3 — Distributed Systems
-
-* [ ] Service discovery
-* [ ] Centralized configuration
-* [ ] Kafka integration
-* [ ] Event-driven communication
-
-### Phase 4 — Production Readiness
-
-* [ ] Global exception handling
-* [ ] Validation
-* [ ] Structured logging
-* [ ] Actuator
-* [ ] Metrics
-* [ ] Prometheus
-* [ ] Grafana
-* [ ] Distributed tracing
-
-### Phase 5 — Deployment
-
-* [ ] Dockerize all services
-* [ ] Docker Compose
-* [ ] CI/CD pipeline
-* [ ] Cloud deployment
-* [ ] Production configuration
-
----
-
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch.
-
-```bash
-git checkout -b feature/my-feature
-```
-
-3. Make your changes.
-4. Add or update tests.
-5. Commit your changes.
-
-```bash
-git commit -m "feat: implement my feature"
-```
-
-6. Push the branch.
-
-```bash
-git push origin feature/my-feature
-```
-
-7. Open a Pull Request.
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
-See the `LICENSE` file for details.
-
----
-
-## Author
-
-**Priyanshu Kumar**
-
-Home Energy Tracker — Microservices-based energy management platform.

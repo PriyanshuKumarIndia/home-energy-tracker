@@ -7,7 +7,7 @@ services:
       MYSQL_DATABASE: home_energy_tracker
       MYSQL_ROOT_PASSWORD: password
     ports:
-      - "3306:3306"
+      - "3308:3306"
     volumes:
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
       - db-data:/var/lib/mysql
@@ -119,7 +119,6 @@ services:
     ports:
       - "8025:8025"
       - "1025:1025"
-
 
 volumes:
   db-data:

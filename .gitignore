@@ -153,3 +153,5 @@ dist/
 .DS_Store
 *.bak
 *.orig
+
+volume-data/mysql_keycloak_data/
