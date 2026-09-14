@@ -89,7 +89,9 @@ User Service     Device Service    Ingestion Service   Insight Service
 | Messaging | Apache Kafka (KRaft mode, no ZooKeeper) |
 | AI / LLM | Spring AI 2.0.1 + Ollama (`deepseek-coder` model) |
 | Email | Spring Mail + Mailpit (local SMTP dev server) |
-| Security | Spring Security (HTTP Basic on all services) |
+| Security | Spring Security + OAuth2 Resource Server (JWT via Keycloak) on the gateway; downstream services are unauthenticated internally |
+| API Documentation | SpringDoc OpenAPI 3.0.2 (Swagger UI aggregated at the gateway) |
+| Metrics | Micrometer + Prometheus (user-service, device-service, api-gateway) |
 | Object mapping | ModelMapper 3.2.4 |
 | AOP | Spring AOP / AspectJ (logging + execution timing) |
 | Observability | Spring Actuator, Logback (rolling file + error file appenders) |
@@ -215,14 +217,19 @@ Request body:
 
 ## Configuration
 
-All services use HTTP Basic authentication. Default credentials (for development) are configured in each service's `application.yml`:
-
-```
-username: user
-password: <configured in application.yml — do not use in production>
-```
+Authentication is handled at the **API Gateway** using OAuth2/JWT. The gateway validates Bearer tokens against a Keycloak realm. Downstream services do not perform their own authentication.
 
 Key configuration properties per service:
+
+**`api-gateway`**
+```yaml
+spring.security.oauth2.resourceserver.jwt.issuer-uri: http://localhost:8091/realms/het-security-realm
+keycloak.auth.jwk-set-uri: http://localhost:8091/realms/het-security-realm/protocol/openid-connect/certs
+excluded.urls:   # paths that bypass JWT auth (actuator, swagger)
+  - /actuator/**
+  - /swagger-ui/**
+  - /v3/api-docs/**
+```
 
 **`usage-service`**
 ```yaml
@@ -264,6 +271,18 @@ waitDurationInOpenState: 5s
 permittedNumberOfCallsInHalfOpenState: 2
 ```
 
+**Swagger UI (aggregated at gateway)**
+
+The gateway aggregates OpenAPI docs from `user-service` and `device-service`:
+
+```
+http://localhost:9000/swagger-ui.html
+```
+
+Individual service docs are also available directly:
+- `http://localhost:8080/api/v1/swagger-ui/index.html` (user-service)
+- `http://localhost:8081/api/v1/swagger-ui/index.html` (device-service)
+
 ---
 
 ## Getting Started
@@ -276,6 +295,7 @@ permittedNumberOfCallsInHalfOpenState: 2
 | Maven | 3.9+ (or use included `mvnw`) |
 | Docker & Docker Compose | Latest |
 | Ollama | Latest — with `deepseek-coder` model pulled |
+| Keycloak | Running on port `8091` with realm `het-security-realm` configured |
 
 ### 1. Start infrastructure
 
@@ -289,6 +309,8 @@ This starts:
 - **Kafka UI** on port `8070` → http://localhost:8070
 - **InfluxDB** on port `8072` → http://localhost:8072
 - **Mailpit** on port `8025` (UI) / `1025` (SMTP) → http://localhost:8025
+
+> **Note:** Keycloak is not included in `docker-compose.yml`. It must be started separately and configured with the `het-security-realm` realm before the gateway will accept requests.
 
 ### 2. Pull the Ollama model
 

@@ -12,7 +12,7 @@ Seven services, each its own Maven module with its own `pom.xml` and `mvnw`:
 
 | Service | Port | Database | Role |
 |---|---|---|---|
-| `api-gateway` | 9000 | — | Spring Cloud Gateway MVC; routes + Resilience4j circuit breakers |
+| `api-gateway` | 9000 | — | Spring Cloud Gateway MVC; routes + Resilience4j circuit breakers + OAuth2/JWT auth (Keycloak) |
 | `user-service` | 8080 | MySQL | User CRUD; owns all Flyway migrations |
 | `device-service` | 8081 | MySQL | Device CRUD |
 | `ingestion-service` | 8082 | — | REST → Kafka producer (`energy-usage` topic) |
@@ -39,6 +39,8 @@ Client → insight-service → UsageClient (RestTemplate) → usage-service
 
 Gateway routes are defined as `@Bean RouterFunction<ServerResponse>` in `api-gateway/src/main/java/.../route/`. Each route has a dedicated fallback returning `503 SERVICE_UNAVAILABLE` with a plain-text body.
 
+The gateway also aggregates Swagger UI for `user-service` and `device-service` at `http://localhost:9000/swagger-ui.html`.
+
 ---
 
 ## Project Structure
@@ -46,7 +48,7 @@ Gateway routes are defined as `@Bean RouterFunction<ServerResponse>` in `api-gat
 Each service follows this internal layout under `com.teamengineoil.<service_name>/`:
 
 ```
-config/       — Spring Security, ModelMapper bean, InfluxDB client, OllamaConfig
+config/       — ModelMapper bean, InfluxDB client, OllamaConfig, OpenApiConfig, SecurityConfig (gateway only)
 controller/   — REST controllers (@RestController)
 service/      — Business logic (@Service); also Kafka @KafkaListener methods live here
 repository/   — Spring Data JPA (@Repository)
@@ -125,17 +127,16 @@ curl http://localhost:9000/actuator/health
 
 All configuration is in per-service `src/main/resources/application.yml`. No Spring profiles, no config server, no `.env` files.
 
-**`@Value` is used directly** — no `@ConfigurationProperties` classes exist. Example pattern from clients:
-```java
-public DeviceClient(@Value("${device.service.url}") String baseUrl) { ... }
-```
+**`@Value` is used directly** in most places. The one `@ConfigurationProperties` class is `ExcludedProperties` in `api-gateway`, which binds the `excluded.urls` list (paths that bypass JWT auth).
 
 **Sensitive values in `application.yml` (do not commit real values to production):**
-- `spring.security.user.password` — HTTP Basic password for all services
 - `spring.datasource.password` — MySQL root password
 - `influx.token` — InfluxDB admin token
+- `keycloak.auth.jwk-set-uri` / `spring.security.oauth2.resourceserver.jwt.issuer-uri` — Keycloak endpoints
 
 **Service URLs are hardcoded** to `localhost` in each `application.yml`. There is no service discovery (no Eureka, no Consul).
+
+**MySQL port is `3308`** (Docker maps 3308 → 3306 inside the container). All `datasource.url` values must use port `3308` when connecting from the host.
 
 **InfluxDB config** (`usage-service`): `influx.url`, `influx.token`, `influx.org`, `influx.bucket` — wired into `InfluxDBConfig.java`.
 
@@ -156,14 +157,19 @@ public DeviceClient(@Value("${device.service.url}") String baseUrl) { ... }
 
 ## API & Security
 
-- All services use **HTTP Basic authentication** (`spring-security-user` in-memory). Every inter-service `RestTemplate` call manually sets `headers.setBasicAuth(user, password)` using the calling service's own credentials.
-- All services have `csrf.disable()` and `.anyRequest().authenticated()` in their `SecurityFilterChain`.
+**Authentication:** The `api-gateway` is the sole authentication boundary. It validates Bearer JWT tokens issued by Keycloak (`het-security-realm` on `localhost:8091`) using `spring-boot-starter-oauth2-resource-server`. The `JwtDecoder` bean is configured in `SecurityConfig` using `keycloak.auth.jwk-set-uri`. Downstream services have no `SecurityConfig` and perform no authentication — they trust that the gateway has already authenticated the caller.
+
+**Excluded paths** (bypass JWT at the gateway, configured via `ExcludedProperties` / `excluded.urls` in `application.yml`):
+- `/actuator/**`, `/swagger-ui/**`, `/v3/api-docs/**`, `/docs/**`, `/swagger-resources/**`, `/api-docs/**`, `/swagger-ui.html`
+
+**Inter-service calls:** `RestTemplate` clients (`DeviceClient`, `UserClient`, `UsageClient`) make unauthenticated HTTP calls directly between services — no auth headers are set.
+
 - Context path `/api/v1` is set on all services except `api-gateway`.
-- **Gateway routing:** Each downstream path prefix maps to one `RouterFunction` bean in `api-gateway/route/`. The gateway does not authenticate — it proxies requests as-is.
+- **Gateway routing:** Each downstream path prefix maps to one `RouterFunction` bean in `api-gateway/route/`.
 - **Validation:** `@Valid` on controller method parameters. Constraint messages use `{key}` referencing `ValidationMessages.properties`.
 - **Error responses** (user-service): `ErrorResponse` record — `{ code, message, timestamp }`. Errors are mapped via `ErrorCode` enum which holds the HTTP status, string code, and i18n message key. `GlobalExceptionHandler` resolves messages via `MessageSource`.
 - **device-service** has a simpler handler (`RestExceptionHandler`) returning a plain `String` body with `404` — not the `ErrorResponse` record pattern.
-- No Swagger/OpenAPI configuration exists in any service.
+- **OpenAPI/Swagger:** `user-service` and `device-service` have `OpenApiConfig` beans (springdoc-openapi 3.0.2). The gateway aggregates both at `http://localhost:9000/swagger-ui.html` via `springdoc.swagger-ui.urls` config.
 
 ---
 
@@ -190,6 +196,8 @@ public DeviceClient(@Value("${device.service.url}") String baseUrl) { ... }
 
 **Resilience4j (api-gateway only):** COUNT_BASED sliding window, size 8, 20% failure threshold, 5s open state, 2 calls in half-open. Configured in `api-gateway/src/main/resources/application.yml`. No circuit breakers on individual service `RestTemplate` calls.
 
+**Prometheus metrics:** `user-service`, `device-service`, and `api-gateway` expose `/actuator/prometheus` via `micrometer-registry-prometheus`. Actuator endpoints exposed: `health`, `info`, `metrics`, `prometheus`.
+
 ---
 
 ## Testing
@@ -212,6 +220,7 @@ When adding tests, use `@SpringBootTest` with `@Disabled` for integration tests 
 | `user-service/src/main/java/.../UserMapper.java` | Canonical ModelMapper wrapper pattern |
 | `user-service/src/main/java/.../exception/GlobalExceptionHandler.java` | Full error-handling pattern (ErrorCode + MessageSource) |
 | `user-service/src/main/java/.../exception/ErrorCode.java` | Error code enum with HTTP status + i18n key |
+| `user-service/src/main/java/.../config/OpenApiConfig.java` | Canonical OpenAPI config pattern (same structure in device-service) |
 | `user-service/src/main/resources/db/migration/` | All Flyway migrations (add new ones here only) |
 | `user-service/src/main/resources/messages/messages.properties` | i18n error messages |
 | `usage-service/src/main/java/.../service/UsageService.java` | Kafka listener + InfluxDB write/query + scheduled alerting |
@@ -220,8 +229,10 @@ When adding tests, use `@SpringBootTest` with `@Disabled` for integration tests 
 | `insight-service/src/main/java/.../config/OllamaConfig.java` | ChatClient bean with system prompt |
 | `insight-service/src/main/java/.../service/InsightService.java` | Spring AI / Ollama usage pattern |
 | `alert-service/src/main/java/.../service/EmailService.java` | JavaMailSender + alert persistence |
+| `api-gateway/src/main/java/.../config/SecurityConfig.java` | OAuth2/JWT security config + JwtDecoder bean |
+| `api-gateway/src/main/java/.../config/ExcludedProperties.java` | @ConfigurationProperties pattern for excluded URL list |
 | `api-gateway/src/main/java/.../route/UserServiceRoutes.java` | Canonical gateway route + circuit breaker + fallback pattern |
-| `api-gateway/src/main/resources/application.yml` | Resilience4j circuit breaker configuration |
+| `api-gateway/src/main/resources/application.yml` | Resilience4j, Keycloak, Swagger aggregation, Prometheus config |
 | `docker-compose.yml` | Full infrastructure stack |
 
 ---
@@ -239,3 +250,6 @@ When adding tests, use `@SpringBootTest` with `@Disabled` for integration tests 
 9. **Do not hardcode credentials or tokens** in source code. Use `@Value` referencing `application.yml` properties.
 10. **`usage-service` route is not exposed through the gateway.** It is only called service-to-service. Do not add a gateway route for it without understanding the alerting scheduler's direct HTTP calls.
 11. **`ParallelDataSimulator` is active by default** (has `@Scheduled`). `ContinuousDataSimulator` is disabled (annotation commented out). Do not re-enable `ContinuousDataSimulator` without disabling `ParallelDataSimulator` first.
+12. **Do not add `SecurityConfig` to downstream services.** Authentication is enforced exclusively at the gateway via OAuth2/JWT. Downstream services are intentionally unauthenticated.
+13. **Do not add OpenAPI config to services that don't already have it.** Currently only `user-service` and `device-service` have `OpenApiConfig`. The gateway aggregates their docs — adding a new service requires updating `springdoc.swagger-ui.urls` in `api-gateway/application.yml` too.
+14. **Keycloak is a required runtime dependency for the gateway.** It is not in `docker-compose.yml` and must be started separately on port `8091` with the `het-security-realm` realm configured.
