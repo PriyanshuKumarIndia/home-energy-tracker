@@ -17,13 +17,6 @@ public class UserClient {
         this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl;
     }
-
-    @Value("${spring.security.user.name}")
-    private String user;
-
-    @Value("${spring.security.user.password}")
-    private String password;
-
     public UserDto getUserById(Long userId) {
         String url = UriComponentsBuilder
                 .fromUriString(baseUrl)
@@ -31,18 +24,7 @@ public class UserClient {
                 .buildAndExpand(userId)
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBasicAuth(user, password);
-
-        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-        ResponseEntity<UserDto> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                requestEntity,
-                UserDto.class
-        );
+        ResponseEntity<UserDto> response = restTemplate.getForEntity(url, UserDto.class);
 
         return response.getBody();
     }

@@ -74,13 +74,6 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
         <!-- ===================================================== -->
-        <!-- Spring Security                                         -->
-        <!-- ===================================================== -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-        <!-- ===================================================== -->
         <!-- Actuator                                                 -->
         <!-- ===================================================== -->
         <dependency>
@@ -119,11 +112,16 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Spring Security testing -->
+
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.0.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
     <!-- ========================================================= -->

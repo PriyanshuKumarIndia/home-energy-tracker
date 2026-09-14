@@ -15,10 +15,6 @@ public class DeviceClient {
     private final RestTemplate restTemplate;
 
     private final String baseUrl;
-    @Value("${spring.security.user.name}")
-    private String user;
-    @Value("${spring.security.user.password}")
-    private String password;
 
     public DeviceClient(@Value("${device.service.url}") String baseUrl) {
         this.restTemplate = new RestTemplate();
@@ -32,18 +28,7 @@ public class DeviceClient {
                 .buildAndExpand(deviceId)
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBasicAuth(user, password);
-
-        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-        ResponseEntity<DeviceDto> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                requestEntity,
-                DeviceDto.class
-        );
+        ResponseEntity<DeviceDto> response = restTemplate.getForEntity(url, DeviceDto.class);
 
         return response.getBody();
     }
@@ -55,18 +40,7 @@ public class DeviceClient {
                 .buildAndExpand(userId)
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBasicAuth(user, password);
-
-        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-        ResponseEntity<DeviceDto[]> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                requestEntity,
-                DeviceDto[].class
-        );
+        ResponseEntity<DeviceDto[]> response = restTemplate.getForEntity(url, DeviceDto[].class);
 
         DeviceDto[] devices = response.getBody();
 

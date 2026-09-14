@@ -19,12 +19,6 @@ public class ContinuousDataSimulator {
 
     private final Random random = new Random();
 
-    @Value("${spring.security.user.name}")
-    private String user;
-
-    @Value("${spring.security.user.password}")
-    private String password;
-
     @Value(("${simulation.requests-per-interval}"))
     private int requestsPerInterval;
 
@@ -41,7 +35,6 @@ public class ContinuousDataSimulator {
             try {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.setBasicAuth(user, password);
 
                 HttpEntity<EnergyUsageDto> request = new HttpEntity<>(energyUsageDto, headers);
                 restTemplate.postForEntity(ingestionEndpoint, request, Void.class);

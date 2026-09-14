@@ -19,12 +19,6 @@ public class UsageClient {
         this.baseUrl = baseUrl;
     }
 
-    @Value("${spring.security.user.name}")
-    private String user;
-
-    @Value("${spring.security.user.password}")
-    private String password;
-
     public UsageDto getXDaysUsageForUser (Long userId, int days) {
         String url = UriComponentsBuilder
                 .fromUriString(baseUrl)
@@ -32,19 +26,7 @@ public class UsageClient {
                 .queryParam("days", days)
                 .buildAndExpand(userId)
                 .toUriString();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBasicAuth(user, password);
-
-        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-        ResponseEntity<UsageDto> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                requestEntity,
-                UsageDto.class
-        );
+        ResponseEntity<UsageDto> response = restTemplate.getForEntity(url, UsageDto.class);
 
         return response.getBody();
     }

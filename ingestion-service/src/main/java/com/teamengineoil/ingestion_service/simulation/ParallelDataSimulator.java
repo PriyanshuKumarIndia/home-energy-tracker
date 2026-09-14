@@ -27,13 +27,6 @@ public class ParallelDataSimulator implements CommandLineRunner {
 
     @Value("${simulation.parallel-threads}")
     private int parallelThreads;
-
-    @Value("${spring.security.user.name}")
-    private String user;
-
-    @Value("${spring.security.user.password}")
-    private String password;
-
     @Value("${simulation.requests-per-interval}")
     private int requestsPerInterval;
 
@@ -67,7 +60,6 @@ public class ParallelDataSimulator implements CommandLineRunner {
                     try {
                         HttpHeaders headers = new HttpHeaders();
                         headers.setContentType(MediaType.APPLICATION_JSON);
-                        headers.setBasicAuth(user, password);
 
                         HttpEntity<EnergyUsageDto> request = new HttpEntity<>(energyUsageDto, headers);
                         restTemplate.postForEntity(ingestionEndpoint, request, Void.class);
