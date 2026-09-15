@@ -155,3 +155,11 @@ dist/
 *.orig
 
 volume-data/mysql_keycloak_data/
+
+### --- InfluxDB Specifics ---
+# Local InfluxDB data storage and write-ahead logs
+data/
+engine/
+*.tsm
+*.wal
+*.pending-snap
