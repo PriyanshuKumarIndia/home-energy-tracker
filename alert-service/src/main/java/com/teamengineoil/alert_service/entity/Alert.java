@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 public class Alert {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private int id;
+    private Long id;
     private Long userId;
     private LocalDateTime createdAt;
     private boolean sent;
